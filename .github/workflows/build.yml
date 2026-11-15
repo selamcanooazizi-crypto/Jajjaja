@@ -1,49 +1,66 @@
-
-name: Build ZegaAI APK
+name: ZegaAI APK Builder
 
 on:
-  push:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Download source
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Install Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Install Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android tools
+      - name: Install NDK and CMake
         run: |
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
 
-      - name: Setup Gradle
+      - name: Extract ZIP if needed
+        run: |
+          if ! find . -name settings.gradle.kts -not -path './.git/*' | grep -q .; then
+            ZIP=$(find . -maxdepth 2 -name '*.zip' -print -quit)
+            if [ -z "$ZIP" ]; then
+              echo "Source ZIP not found"
+              exit 1
+            fi
+            mkdir -p source_files
+            unzip -q "$ZIP" -d source_files
+          fi
+
+      - name: Find Android project
+        run: |
+          SETTINGS=$(find . -name settings.gradle.kts -not -path './.git/*' -print -quit)
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle.kts not found"
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - name: Build APK
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Find project and build APK
+      - name: Compile ZegaAI
         run: |
-          ROOT=$(find . -name settings.gradle.kts -not -path './.gradle/*' -print -quit | xargs dirname)
-          if [ -z "$ROOT" ]; then
-            echo "Gradle project not found!"
-            exit 1
-          fi
-          cd "$ROOT"
+          cd "$PROJECT_DIR"
           gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ZegaAI-APK
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: '**/build/outputs/apk/debug/*.apk'
           if-no-files-found: error
