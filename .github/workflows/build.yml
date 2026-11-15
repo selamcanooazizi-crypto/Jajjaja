@@ -1,3 +1,4 @@
+
 name: ZegaAI APK Builder
 
 on:
@@ -11,49 +12,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK and CMake
+      - name: Accept Android licenses
         run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+          SDKMANAGER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f | head -n 1)
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses
 
-      - name: Extract ZIP if needed
+      - name: Install Android SDK packages
         run: |
-          if ! find . -name settings.gradle.kts -not -path './.git/*' | grep -q .; then
-            ZIP=$(find . -maxdepth 2 -name '*.zip' -print -quit)
-            if [ -z "$ZIP" ]; then
-              echo "Source ZIP not found"
-              exit 1
-            fi
-            mkdir -p source_files
-            unzip -q "$ZIP" -d source_files
-          fi
+          SDKMANAGER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" -name sdkmanager -type f | head -n 1)
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
 
-      - name: Find Android project
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Find project
         run: |
-          SETTINGS=$(find . -name settings.gradle.kts -not -path './.git/*' -print -quit)
+          SETTINGS=$(find . -name settings.gradle.kts -o -name settings.gradle | head -n 1)
           if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle.kts not found"
+            echo "Gradle project not found"
             exit 1
           fi
           echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
 
       - name: Build APK
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Compile ZegaAI
         run: |
           cd "$PROJECT_DIR"
           gradle assembleDebug --no-daemon --stacktrace
