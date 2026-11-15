@@ -1,10 +1,9 @@
+
 name: Build ZegaAI APK
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,19 +13,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Build APK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android tools
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Find project and build APK
+        run: |
+          ROOT=$(find . -name settings.gradle.kts -not -path './.gradle/*' -print -quit | xargs dirname)
+          if [ -z "$ROOT" ]; then
+            echo "Gradle project not found!"
+            exit 1
+          fi
+          cd "$ROOT"
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ZegaAI-APK
           path: "**/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
